@@ -85,6 +85,22 @@ class Image
     }
 
     /**
+     * @param int $limit
+     *
+     * @return array
+     */
+    public function getMostUsedColors($limit)
+    {
+        $palette = $this->getPalette();
+        arsort($palette);
+
+        return array_map(
+            array($this, 'toHex'),
+            array_keys(array_slice($palette, 0, $limit, true))
+        );
+    }
+
+    /**
      * @param int $maxPaletteSize
      *
      * @return array
