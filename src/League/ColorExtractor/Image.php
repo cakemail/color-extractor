@@ -14,6 +14,16 @@ class Image
     protected $imageResource;
 
     /**
+     * @var int Image width
+     */
+    protected $imageWidth;
+
+    /**
+     * @var int Image height
+     */
+    protected $imageHeight;
+
+    /**
      * @var int Minimum ratio, below colors are ignored (0 - 1)
      */
     protected $minColorRatio = 0;
@@ -24,6 +34,8 @@ class Image
     public function __construct($imageResource)
     {
         $this->imageResource = $imageResource;
+        $this->imageWidth = imagesx($imageResource);
+        $this->imageHeight = imagesy($imageResource);
     }
 
     /**
@@ -47,37 +59,44 @@ class Image
     }
 
     /**
-     * @param int $maxPaletteSize
-     *
      * @return array
      */
-    public function extract($maxPaletteSize = 1)
+    public function getPalette()
     {
-        $w = imagesx($this->imageResource);
-        $h = imagesy($this->imageResource);
+        $palette = array();
 
-        $colors = array();
-
-        for ($x = 0; $x < $w; $x++) {
-            for ($y = 0; $y < $h; $y++) {
+        for ($x = 0; $x < $this->imageWidth; $x++) {
+            for ($y = 0; $y < $this->imageHeight; $y++) {
                 $rgba = imagecolorsforindex($this->imageResource, imagecolorat($this->imageResource, $x, $y));
                 if ($rgba['alpha'] == 127) {
                     continue;
                 }
                 $color = hexdec(sprintf('%02X%02X%02X', $rgba['red'], $rgba['green'], $rgba['blue']));
 
-                if (array_key_exists($color, $colors)) {
-                    $colors[$color]++;
+                if (array_key_exists($color, $palette)) {
+                    $palette[$color]++;
                 } else {
-                    $colors[$color] = 1;
+                    $palette[$color] = 1;
                 }
             }
         }
 
-        $totalColorCount = $finalColorCount = count($colors);
-        $minCountAllowed = $w * $h * $this->minColorRatio;
+        return $palette;
+    }
 
-        foreach ($colors as $color => &$data) {
+    /**
+     * @param int $maxPaletteSize
+     *
+     * @return array
+     */
+    public function extract($maxPaletteSize = 1)
+    {
+        $palette = $this->getPalette();
+
+        $totalColorCount = $finalColorCount = count($palette);
+        $minCountAllowed = $this->imageWidth * $this->imageHeight * $this->minColorRatio;
+
+        foreach ($palette as $color => &$data) {
             if ($data < $minCountAllowed) {
                 unset($colors[$color]);
                 $finalColorCount--;
@@ -86,7 +105,7 @@ class Image
             }
         }
 
-        arsort($colors, SORT_NUMERIC);
+        arsort($palette);
 
         $paletteSize = min($maxPaletteSize, $finalColorCount);
 
@@ -97,15 +116,15 @@ class Image
             $i = 0;
             $mergeCount = 0;
             while ($i++ < $paletteSize) {
-                if ($paletteSize >= count($colors)) {
+                if ($paletteSize >= count($palette)) {
                     break;
                 }
                 $j = 0;
-                reset($colors);
+                reset($palette);
                 while (++$j < $i) {
-                    next($colors);
+                    next($palette);
                 }
-                $refColor = key($colors);
+                $refColor = key($palette);
 
                 if (!array_key_exists($refColor, $LabCache)) {
                     $LabCache[$refColor] = $this->getLabFromColor($refColor);
@@ -114,13 +133,13 @@ class Image
                 if ($mergeCount) {
                     $offset = max($i, $paletteSize - $mergeCount - 1);
                     while ($j++ < $offset) {
-                        next($colors);
+                        next($palette);
                     }
                     $mergeCount = 0;
                 }
                 while ($j++ <= $paletteSize) {
-                    next($colors);
-                    $cmpColor = key($colors);
+                    next($palette);
+                    $cmpColor = key($palette);
 
                     if (!array_key_exists($cmpColor, $LabCache)) {
                         $LabCache[$cmpColor] = $this->getLabFromColor($cmpColor);
@@ -129,8 +148,8 @@ class Image
                     if ($this->ciede2000DeltaE($LabCache[$refColor], $LabCache[$cmpColor]) <= $minDeltaE) {
                         $j--;
                         $mergeCount++;
-                        prev($colors);
-                        unset($colors[$cmpColor]);
+                        prev($palette);
+                        unset($palette[$cmpColor]);
                         if ($i > 1) {
                             $i = 0;
                         }
@@ -140,8 +159,8 @@ class Image
         }
 
         return array_map(
-            array(__CLASS__, 'toHex'),
-            array_keys(array_slice($colors, 0, $paletteSize, true))
+            array($this, 'toHex'),
+            array_keys(array_slice($palette, 0, $paletteSize, true))
         );
     }
 
