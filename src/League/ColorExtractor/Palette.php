@@ -123,7 +123,7 @@ class Palette implements \Countable, \IteratorAggregate {
                 $color = imagecolorat($image, $x, $y);
                 if ($isImageIndexed) {
                     $colorComponents = imagecolorsforindex($image, $color);
-                    $color = $colorComponents['red']*65536 + $colorComponents['green']*256 + $colorComponents['blue'];
+                    $color = ($colorComponents['red']*65536) + ($colorComponents['green']*256) + ($colorComponents['blue']);
                 }
 
                 $palette->addColor($color);
@@ -202,17 +202,22 @@ class Palette implements \Countable, \IteratorAggregate {
      */
     protected static function getColorScore($color, $count, $colorsCount)
     {
-        $sRGBComponents = self::intColorToSRGB($color);
-        $max = max($sRGBComponents);
-        $min = min($sRGBComponents);
+        $srgbComponents = self::intColorToSrgb($color);
+        $max = max($srgbComponents);
+        $min = min($srgbComponents);
         $diff = $max - $min;
         $sum = $max + $min;
-        $saturation = $diff ? ($sum/2 > .5 ? $diff/(2 - $diff) : $diff/$sum) : 0;
-        $luminosity = ($sum/2 + .2126*$sRGBComponents['R'] + .7152*$sRGBComponents['G'] + .0722*$sRGBComponents['B'])/2;
+        $saturation = 0;
+        if ($diff) {
+            $saturation = $sum/2 > .5 ?
+                $diff/(2 - $diff) :
+                $diff/$sum;
+        }
+        $luminosity = (($sum/2) + (.2126*$srgbComponents['R']) + (.7152*$srgbComponents['G']) + (.0722*$srgbComponents['B']))/2;
 
         return $saturation < .5 ?
-            (1 - $luminosity)*$count/$colorsCount :
-            $count*($saturation)*$luminosity;
+            (1 - $luminosity)*($count/$colorsCount) :
+            $count*$saturation*$luminosity;
     }
 
     /**
@@ -221,9 +226,9 @@ class Palette implements \Countable, \IteratorAggregate {
      */
     protected static function intColorToLab($color)
     {
-        return self::XYZToLab(
-            self::sRGBToXYZ(
-                self::intColorToSRGB($color)
+        return self::xyzToLab(
+            self::srgbToXyz(
+                self::intColorToSrgb($color)
             )
         );
     }
@@ -232,9 +237,9 @@ class Palette implements \Countable, \IteratorAggregate {
      * @param int $color
      * @return array
      */
-    protected static function intColorToSRGB($color)
+    protected static function intColorToSrgb($color)
     {
-        return self::RGBToSRGB(
+        return self::rgbToSrgb(
             array(
                 'R' => ($color >> 16) & 0xFF,
                 'G' => ($color >> 8) & 0xFF,
@@ -247,36 +252,38 @@ class Palette implements \Countable, \IteratorAggregate {
      * @param int $value
      * @return float
      */
-    protected static function RGBToSRGBStep($value)
+    protected static function rgbToSrgbStep($value)
     {
         $value /= 255;
 
-        return $value <= .03928 ? $value/12.92 : pow(($value + .055)/1.055, 2.4);
+        return $value <= .03928 ?
+            $value/12.92 :
+            pow(($value + .055)/1.055, 2.4);
     }
 
     /**
-     * @param array $RGB
+     * @param array $rgb
      * @return array
      */
-    protected static function RGBToSRGB($RGB)
+    protected static function rgbToSrgb($rgb)
     {
         return array(
-            'R' => self::RGBToSRGBStep($RGB['R']),
-            'G' => self::RGBToSRGBStep($RGB['G']),
-            'B' => self::RGBToSRGBStep($RGB['B'])
+            'R' => self::rgbToSrgbStep($rgb['R']),
+            'G' => self::rgbToSrgbStep($rgb['G']),
+            'B' => self::rgbToSrgbStep($rgb['B'])
         );
     }
 
     /**
-     * @param array $RGB
+     * @param array $rgb
      * @return array
      */
-    protected static function sRGBToXYZ($RGB)
+    protected static function srgbToXyz($rgb)
     {
         return array(
-            'X' => .4124564 * $RGB['R'] + .3575761 * $RGB['G'] + .1804375 * $RGB['B'],
-            'Y' => .2126729 * $RGB['R'] + .7151522 * $RGB['G'] + .0721750 * $RGB['B'],
-            'Z' => .0193339 * $RGB['R'] + .1191920 * $RGB['G'] + .9503041 * $RGB['B']
+            'X' => (.4124564*$rgb['R']) + (.3575761*$rgb['G']) + (.1804375*$rgb['B']),
+            'Y' => (.2126729*$rgb['R']) + (.7151522*$rgb['G']) + (.0721750*$rgb['B']),
+            'Z' => (.0193339*$rgb['R']) + (.1191920*$rgb['G']) + (.9503041*$rgb['B'])
         );
     }
 
@@ -284,16 +291,16 @@ class Palette implements \Countable, \IteratorAggregate {
      * @param float $value
      * @return float
      */
-    protected static function XYZToLabStep($value)
+    protected static function xyzToLabStep($value)
     {
         return $value > pow(6/29, 3) ? pow($value, 1/3) : (1/3)*pow(29/6, 2)*$value + 4/29;
     }
 
     /**
-     * @param array $XYZ
+     * @param array $xyz
      * @return array
      */
-    protected static function XYZToLab($XYZ)
+    protected static function xyzToLab($xyz)
     {
         //http://en.wikipedia.org/wiki/Illuminant_D65#Definition
         $Xn = .95047;
@@ -302,9 +309,9 @@ class Palette implements \Countable, \IteratorAggregate {
 
         // http://en.wikipedia.org/wiki/Lab_color_space#CIELAB-CIEXYZ_conversions
         return array(
-            'L' => 116*self::XYZToLabStep($XYZ['Y']/$Yn) - 16,
-            'a' => 500*(self::XYZToLabStep($XYZ['X']/$Xn) - self::XYZToLabStep($XYZ['Y']/$Yn)),
-            'b' => 200*(self::XYZToLabStep($XYZ['Y']/$Yn) - self::XYZToLabStep($XYZ['Z']/$Zn))
+            'L' => 116*self::xyzToLabStep($xyz['Y']/$Yn) - 16,
+            'a' => 500*(self::xyzToLabStep($xyz['X']/$Xn) - self::xyzToLabStep($xyz['Y']/$Yn)),
+            'b' => 200*(self::xyzToLabStep($xyz['Y']/$Yn) - self::xyzToLabStep($xyz['Z']/$Zn))
         );
     }
 
