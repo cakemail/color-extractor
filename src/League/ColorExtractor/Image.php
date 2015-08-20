@@ -217,10 +217,15 @@ class Image
         $saturation = $diff ? ($sum / 2 > .5 ? $diff / (2 - $diff) : $diff / $sum) : 0;
         $luminosity = ($sum / 2 + .2126 * $sRGBComponents[0] + .7152 * $sRGBComponents[1] + .0722 * $sRGBComponents[2])
             / 2;
-
-        return $saturation < .5 ?
-            (1 - $luminosity) * $count / $colorsCount :
-            $count * ($saturation) * $luminosity;
+        
+        //White is a special case, will always get score 0. We don't want that.
+        if($color == 16777215){
+            return $count / $colorsCount;
+        }else{
+            return $saturation < .5 ?
+                (1 - $luminosity) * $count / $colorsCount :
+                $count * ($saturation) * $luminosity;
+        }
     }
 
     /**
