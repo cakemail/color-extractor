@@ -81,15 +81,23 @@ class Image
             }
         }
 
+
+        $scoreColors = $this->finalizeColors($colors, $w, $h, $maxPaletteSize);
+        $countColors = $this->finalizeColors($colors, $w, $h, $maxPaletteSize, false);
+
+        return array('score' => $scoreColors, 'count' => $countColors);
+
+    }
+
+    protected function finalizeColors($colors, $w, $h, $maxPaletteSize, $score = true){
         $totalColorCount = $finalColorCount = count($colors);
         $minCountAllowed = $w * $h * $this->minColorRatio;
-
         foreach ($colors as $color => &$data) {
             if ($data < $minCountAllowed) {
                 unset($colors[$color]);
                 $finalColorCount--;
             } else {
-                $data = $this->getColorScore($color, $data, $totalColorCount);
+                $data = $this->getColorScore($color, $data, $totalColorCount, $score);
             }
         }
 
@@ -147,11 +155,17 @@ class Image
                 }
             }
         }
+        $resultingArr = [];
+        foreach($colors as $color => $score){
+            $resultingArr[$this->toHex($color)] = $score;
+        }
 
-        return array_map(
+        /*print_r(array_map(
             array(__CLASS__, 'toHex'),
             array_keys(array_slice($colors, 0, $paletteSize, true))
-        );
+        ));*/
+
+        return array_slice($resultingArr, 0, $paletteSize, true);
     }
 
     /**
@@ -204,10 +218,11 @@ class Image
      * @param $color
      * @param $count
      * @param $colorsCount
+     * @param $score
      *
      * @return float
      */
-    protected function getColorScore($color, $count, $colorsCount)
+    protected function getColorScore($color, $count, $colorsCount, $score = true)
     {
         $sRGBComponents = $this->getSRGBComponents($this->getRGBComponents($color));
         $max = max($sRGBComponents);
@@ -217,15 +232,20 @@ class Image
         $saturation = $diff ? ($sum / 2 > .5 ? $diff / (2 - $diff) : $diff / $sum) : 0;
         $luminosity = ($sum / 2 + .2126 * $sRGBComponents[0] + .7152 * $sRGBComponents[1] + .0722 * $sRGBComponents[2])
             / 2;
-        
-        //White is a special case, will always get score 0. We don't want that.
-        if($color == 16777215){
-            return $count / $colorsCount;
+
+        if($score){
+            //White is a special case, will always get score 0. We don't want that.
+            if($color == 16777215){
+                return $count / $colorsCount;
+            }else{
+                return $saturation < .5 ?
+                    (1 - $luminosity) * $count / $colorsCount :
+                    $count * ($saturation) * $luminosity;
+            }
         }else{
-            return $saturation < .5 ?
-                (1 - $luminosity) * $count / $colorsCount :
-                $count * ($saturation) * $luminosity;
+            return $count;
         }
+
     }
 
     /**
